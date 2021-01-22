@@ -1,3 +1,4 @@
+  
 # Copyright (c) 2017 Princeton University
 # All rights reserved.
 # 
@@ -55,7 +56,7 @@ def flushGroup(fptr, addr_str, gr_blocks):
 def strFromAddr(addr, width):
     s = str(hex(addr))
     h = s[2:]
-    return (width-len(h))*'0' + h
+    return (int(width)-len(h))*'0' + h
 
 def makeStreamFile(fname_bram):
     fin = open(fname_bram, 'r')
@@ -113,3 +114,4 @@ def makeStreamFile(fname_bram):
 
     fin.close()
     fout.close()
+

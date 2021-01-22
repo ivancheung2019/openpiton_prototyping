@@ -37,7 +37,7 @@
 #
 #####################################################################
 
-import time, re, sys, os, serial, shlex, subprocess, csv
+import time, re, sys, os, serial, shlex, subprocess, csv, binascii
 import make_mem_map as mmm
 import image2stream as i2s
 from optparse import OptionParser
@@ -93,6 +93,7 @@ def usage():
     print("              Name of a supported core configuration:", file=sys.stderr)
     print("                  sparc     (opensparc T1 core, default)", file=sys.stderr)
     print("                  ariane    (64bit RISCV core)", file=sys.stderr)
+    print("                  blackparrot (64bit RISCV core)", file=sys.stderr)
     print("\n       -f, --file <filename>", file=sys.stderr)
     print("              File name with test names. If option --ustr is not specified,", file=sys.stderr)
     print("              they should be assembly test names, otherwise list of generated", file=sys.stderr)
@@ -191,7 +192,7 @@ def pollUART(ser):
         if len(rdata) > 0:
             # have to store all data in case of a key
             # is split between two different reads from serial device
-            rdata_all += rdata
+            rdata_all += str(rdata)
 
             was_key = False
             for key in list(KEY_EVENT_MAP.keys()):
@@ -202,7 +203,7 @@ def pollUART(ser):
                     event = KEY_EVENT_MAP[key]
                     # if keyword was in the current read chunk of data,
                     # we can remove it, since it's not test output
-                    rdata = re.sub("%s" % key, "", rdata)
+                    rdata = re.sub("%s" % key, "", str(rdata))
                     was_key = True
                     break
 
@@ -230,7 +231,7 @@ def loadTest(tname, ser):
     prev_perc = 0
     for line in f:
         line_striped = line.strip()
-        ser.write(line_striped.decode("hex"))
+        ser.write(binascii.unhexlify(line_striped))
         line_cnt += 1
         perc = 100*line_cnt/num_lines
         if (perc > prev_perc):
@@ -304,7 +305,7 @@ def compileASMTest(tname, uart_div_latch, st_brd, flog, midas_args=None, coreTyp
 
     # Since we are using an existent synthesized mapping, we have to check
     # that all sections of new tests are mapped
-    rv = isTranslatorOK(addr_data_map, flog, coreType=="ariane")
+    rv = isTranslatorOK(addr_data_map, flog, coreType in ["ariane", "blackparrot"])
     if not rv:
         print_error("Can't use existent storage_addr_trans.tmp.v for %s" % tname)
         return 1
@@ -379,20 +380,20 @@ def main():
 
     # Wait until FPGA is configure
     if not options.no_wait_fpga_config:
-    	writeSTDOUT("Press reset button on FPGA\n")
-    	writeSTDOUT("Waiting...\n")
-    	while True:
-    	    try:
-    	        event = pollUART(ser)[0]
-    	        if event == CFG_DONE_EVENT:
-    	            writeSTDOUT("\nConfiguration is complete\n\n")
-    	            break
-    	    except KeyboardInterrupt:
-    	        processKeyboardInterrupt(ser, flog)
-    	        return
+        writeSTDOUT("Press reset button on FPGA\n")
+        writeSTDOUT("Waiting...\n")
+        while True:
+            try:
+                event = pollUART(ser)[0]
+                if event == CFG_DONE_EVENT:
+                    writeSTDOUT("\nConfiguration is complete\n\n")
+                    break
+            except KeyboardInterrupt:
+                processKeyboardInterrupt(ser, flog)
+                return
 
     # Main test loop
-    fp = open("pitonstream_summary.csv", "wb")
+    fp = open("pitonstream_summary.csv", "w")
     csvwriter = csv.writer(fp, delimiter=',', quotechar='|')
     csvwriter.writerow(["seqID","test","status","walltime (seconds)"])
     test_num = len(tests)
@@ -400,8 +401,10 @@ def main():
     for tname in tests:
         test_cnt += 1
         print_info("Running %s: %d out of %d test" % (tname, test_cnt, test_num))
-        if options.precompiled and options.core == "Ariane":
+        if options.precompiled and options.core == "ariane":
             print_info("Using precompiled RISCV test for Ariane.")
+        if options.precompiled and options.core == "blackparrot":
+            print_info("Using precompiled RISCV test for BlackParrot.")
         # Compile .s tests to get .ustr
         if options.ustr == False:
             rv = compileASMTest(tname, uart_div_latch, st_brd, flog, options.midas_args, options.core, options.precompiled, options.x_tiles, options.y_tiles)
